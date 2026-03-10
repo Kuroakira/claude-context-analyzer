@@ -110,29 +110,33 @@ export function App() {
               </div>
             )}
             {selected && displayData && (
-              <div className="session-detail">
-                <h2>
-                  Session: {selected.id.slice(0, 8)}...
-                </h2>
-                <p>
-                  {displayData.turns.length} turns
-                  {displayData.skippedLines > 0 && (
-                    <span className="skipped-count">
-                      {" "}({displayData.skippedLines} skipped)
-                    </span>
-                  )}
-                </p>
-                {displayData.warnings.length > 0 && (
-                  <div className="session-warnings">
-                    {displayData.warnings.map((w, i) => (
-                      <div key={i} className="warning">{w}</div>
-                    ))}
+              <div className="session-content">
+                <div className="session-chart-area">
+                  <div className="session-detail">
+                    <h2>
+                      Session: {selected.id.slice(0, 8)}...
+                    </h2>
+                    <p>
+                      {displayData.turns.length} turns
+                      {displayData.skippedLines > 0 && (
+                        <span className="skipped-count">
+                          {" "}({displayData.skippedLines} skipped)
+                        </span>
+                      )}
+                    </p>
+                    {displayData.warnings.length > 0 && (
+                      <div className="session-warnings">
+                        {displayData.warnings.map((w, i) => (
+                          <div key={i} className="warning">{w}</div>
+                        ))}
+                      </div>
+                    )}
+                    <TokenChart
+                      turns={displayData.turns}
+                      onTurnHover={setHoveredTurn}
+                    />
                   </div>
-                )}
-                <TokenChart
-                  turns={displayData.turns}
-                  onTurnHover={setHoveredTurn}
-                />
+                </div>
                 {hoveredTurn !== null && displayData.turns[hoveredTurn] && (
                   <DetailPanel
                     turn={displayData.turns[hoveredTurn]}

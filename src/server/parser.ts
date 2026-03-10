@@ -41,6 +41,7 @@ function addBreakdown(
 }
 
 function extractUserText(content: unknown): string {
+  if (typeof content === "string") return content.trim();
   if (!Array.isArray(content)) return "";
   const texts: string[] = [];
   for (const item of content) {

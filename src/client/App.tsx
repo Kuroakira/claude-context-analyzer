@@ -1,22 +1,61 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { SessionMeta, ParseResult } from "../shared/types";
 import { useFetch } from "./hooks/useApi";
 import { usePolling } from "./hooks/usePolling";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { SessionList } from "./components/SessionList";
 import { TokenChart } from "./components/TokenChart";
-import { DetailPopup } from "./components/DetailPopup";
+import { DetailPanel } from "./components/DetailPanel";
 import "./App.css";
+
+function getSessionFromUrl(): { id: string; project: string } | null {
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get("session");
+  const project = params.get("project");
+  if (id && project) return { id, project };
+  return null;
+}
+
+function updateUrl(session: SessionMeta | null) {
+  const url = new URL(window.location.href);
+  if (session) {
+    url.searchParams.set("session", session.id);
+    url.searchParams.set("project", session.projectPath);
+  } else {
+    url.searchParams.delete("session");
+    url.searchParams.delete("project");
+  }
+  window.history.replaceState(null, "", url.toString());
+}
 
 export function App() {
   const [selected, setSelected] = useState<SessionMeta | null>(null);
-  const [popupTurn, setPopupTurn] = useState<number | null>(null);
+  const [hoveredTurn, setHoveredTurn] = useState<number | null>(null);
+  const [urlRestored, setUrlRestored] = useState(false);
 
   const {
     data: sessions,
     loading: sessionsLoading,
     error: sessionsError,
   } = useFetch<SessionMeta[]>("/api/sessions");
+
+  // Restore session from URL once sessions are loaded
+  useEffect(() => {
+    if (urlRestored || !sessions || sessions.length === 0) return;
+    setUrlRestored(true);
+    const fromUrl = getSessionFromUrl();
+    if (!fromUrl) return;
+    const match = sessions.find(
+      (s) => s.id === fromUrl.id && s.projectPath === fromUrl.project,
+    );
+    if (match) setSelected(match);
+  }, [sessions, urlRestored]);
+
+  const handleSelect = useCallback((s: SessionMeta) => {
+    setSelected(s);
+    setHoveredTurn(null);
+    updateUrl(s);
+  }, []);
 
   const sessionUrl = selected
     ? `/api/sessions/${selected.id}?project=${encodeURIComponent(selected.projectPath)}`
@@ -53,10 +92,7 @@ export function App() {
             <SessionList
               sessions={sessions ?? []}
               selectedId={selected?.id ?? null}
-              onSelect={(s) => {
-                setSelected(s);
-                setPopupTurn(null);
-              }}
+              onSelect={handleSelect}
             />
           </aside>
           <main className="app-main">
@@ -95,16 +131,15 @@ export function App() {
                 )}
                 <TokenChart
                   turns={displayData.turns}
-                  onTurnClick={setPopupTurn}
+                  onTurnHover={setHoveredTurn}
                 />
+                {hoveredTurn !== null && displayData.turns[hoveredTurn] && (
+                  <DetailPanel
+                    turn={displayData.turns[hoveredTurn]}
+                    onClose={() => setHoveredTurn(null)}
+                  />
+                )}
               </div>
-            )}
-            {popupTurn !== null && displayData && displayData.turns[popupTurn] && (
-              <DetailPopup
-                turnIndex={popupTurn}
-                userMessage={displayData.turns[popupTurn].userMessage}
-                onClose={() => setPopupTurn(null)}
-              />
             )}
           </main>
         </div>

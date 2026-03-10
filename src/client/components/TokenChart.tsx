@@ -6,7 +6,7 @@ import { toChartData } from "../lib/chartData";
 
 interface Props {
   turns: ParsedTurn[];
-  onTurnClick?: (turnIndex: number) => void;
+  onTurnHover?: (turnIndex: number | null) => void;
 }
 
 const SERIES: uPlot.Series[] = [
@@ -61,7 +61,7 @@ const BREAKDOWN_LABELS: Record<string, string> = {
 
 function tooltipPlugin(
   turns: ParsedTurn[],
-  onTurnClick?: (turnIndex: number) => void,
+  onTurnHover?: (turnIndex: number | null) => void,
 ): uPlot.Plugin {
   let tooltip: HTMLDivElement | null = null;
   let lastIdx: number | null = null;
@@ -71,13 +71,6 @@ function tooltipPlugin(
     tooltip.className = "uplot-tooltip";
     tooltip.style.display = "none";
     u.over.appendChild(tooltip);
-
-    // Click handler
-    u.over.addEventListener("click", () => {
-      if (onTurnClick && lastIdx != null) {
-        onTurnClick(lastIdx);
-      }
-    });
   }
 
   function setCursor(u: uPlot) {
@@ -85,13 +78,19 @@ function tooltipPlugin(
     const idx = u.cursor.idx;
     if (idx == null || idx < 0 || idx >= turns.length) {
       tooltip.style.display = "none";
-      lastIdx = null;
+      if (lastIdx !== null) {
+        lastIdx = null;
+      }
       return;
     }
 
-    lastIdx = idx;
+    if (lastIdx !== idx) {
+      lastIdx = idx;
+      onTurnHover?.(idx);
+    }
+
     const turn = turns[idx];
-    const { usage, contextBreakdown, userMessage } = turn;
+    const { usage, contextBreakdown } = turn;
 
     // Build token rows
     const tokenRows = [
@@ -117,13 +116,6 @@ function tooltipPlugin(
       (sum, [, v]) => sum + v,
       0,
     );
-
-    // User message preview
-    const msgPreview = userMessage
-      ? userMessage.length > 120
-        ? userMessage.slice(0, 120) + "..."
-        : userMessage
-      : "(no message)";
 
     let html = `<div class="tt-header">Turn ${idx}</div>`;
 
@@ -161,12 +153,6 @@ function tooltipPlugin(
       html += `</div>`;
     }
 
-    // User message
-    html += `<div class="tt-divider"></div>`;
-    html += `<div class="tt-section-title">User Request</div>`;
-    html += `<div class="tt-msg">${escapeHtml(msgPreview)}</div>`;
-    html += `<div class="tt-hint">Click for full message</div>`;
-
     tooltip.innerHTML = html;
     tooltip.style.display = "block";
 
@@ -195,21 +181,13 @@ function tooltipPlugin(
   };
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-export function TokenChart({ turns, onTurnClick }: Props) {
+export function TokenChart({ turns, onTurnHover }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<uPlot | null>(null);
 
-  const stableOnTurnClick = useCallback(
-    (idx: number) => onTurnClick?.(idx),
-    [onTurnClick],
+  const stableOnTurnHover = useCallback(
+    (idx: number | null) => onTurnHover?.(idx),
+    [onTurnHover],
   );
 
   useEffect(() => {
@@ -222,7 +200,7 @@ export function TokenChart({ turns, onTurnClick }: Props) {
       width: el.clientWidth,
       height: 400,
       series: SERIES,
-      plugins: [tooltipPlugin(turns, stableOnTurnClick)],
+      plugins: [tooltipPlugin(turns, stableOnTurnHover)],
       axes: [
         { label: "Turn", space: 40 },
         {
@@ -267,7 +245,7 @@ export function TokenChart({ turns, onTurnClick }: Props) {
       chartRef.current?.destroy();
       chartRef.current = null;
     };
-  }, [turns, stableOnTurnClick]);
+  }, [turns, stableOnTurnHover]);
 
   if (turns.length === 0) {
     return <div className="chart-empty">No turn data to display</div>;

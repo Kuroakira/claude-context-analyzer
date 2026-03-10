@@ -1,4 +1,5 @@
 import type { ParsedTurn } from "../../shared/types";
+import { HighlightedText } from "./HighlightedText";
 
 interface Props {
   turn: ParsedTurn | null;
@@ -154,7 +155,9 @@ export function DetailPanel({ turn }: Props) {
 
         <div className="detail-section detail-section-message">
           <h4>User Request</h4>
-          <pre className="detail-message-content">{userMessage || "(no message)"}</pre>
+          <div className="detail-message-content">
+            <HighlightedText text={userMessage || "(no message)"} />
+          </div>
         </div>
       </div>
     </aside>

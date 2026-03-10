@@ -15,6 +15,13 @@ export interface ContextBreakdown {
   images: number;
 }
 
+export interface UserContentBlock {
+  type: 'user-text' | 'system-context' | 'tool-result' | 'image';
+  subtype?: string;
+  text: string;
+  raw?: string;
+}
+
 export interface ParsedTurn {
   turnIndex: number;
   timestamp: string;
@@ -25,6 +32,8 @@ export interface ParsedTurn {
   contextBreakdown: ContextBreakdown;
   /** Delta: content added in this turn only */
   contextDelta: ContextBreakdown;
+  /** Parsed content blocks from the user message */
+  userContent: UserContentBlock[];
 }
 
 export interface SessionMeta {

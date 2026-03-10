@@ -6,6 +6,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { SessionList } from "./components/SessionList";
 import { TokenChart } from "./components/TokenChart";
 import { DetailPanel } from "./components/DetailPanel";
+import { RequestTimeline } from "./components/RequestTimeline";
 import "./App.css";
 
 function getSessionFromUrl(): { id: string; project: string } | null {
@@ -31,6 +32,7 @@ function updateUrl(session: SessionMeta | null) {
 export function App() {
   const [selected, setSelected] = useState<SessionMeta | null>(null);
   const [hoveredTurn, setHoveredTurn] = useState<number | null>(null);
+  const [showTimeline, setShowTimeline] = useState(false);
   const [urlRestored, setUrlRestored] = useState(false);
 
   const {
@@ -113,17 +115,27 @@ export function App() {
               <div className="session-content">
                 <div className="session-chart-area">
                   <div className="session-detail">
-                    <h2>
-                      Session: {selected.id.slice(0, 8)}...
-                    </h2>
-                    <p>
-                      {displayData.turns.length} turns
-                      {displayData.skippedLines > 0 && (
-                        <span className="skipped-count">
-                          {" "}({displayData.skippedLines} skipped)
-                        </span>
-                      )}
-                    </p>
+                    <div className="session-detail-header">
+                      <div>
+                        <h2>
+                          Session: {selected.id.slice(0, 8)}...
+                        </h2>
+                        <p>
+                          {displayData.turns.length} turns
+                          {displayData.skippedLines > 0 && (
+                            <span className="skipped-count">
+                              {" "}({displayData.skippedLines} skipped)
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <button
+                        className="timeline-toggle"
+                        onClick={() => setShowTimeline((v) => !v)}
+                      >
+                        {showTimeline ? "Hide Requests" : "Show Requests"}
+                      </button>
+                    </div>
                     {displayData.warnings.length > 0 && (
                       <div className="session-warnings">
                         {displayData.warnings.map((w, i) => (
@@ -136,6 +148,13 @@ export function App() {
                       onTurnHover={setHoveredTurn}
                     />
                   </div>
+                  {showTimeline && (
+                    <RequestTimeline
+                      turns={displayData.turns}
+                      hoveredTurn={hoveredTurn}
+                      onTurnHover={setHoveredTurn}
+                    />
+                  )}
                 </div>
                 <DetailPanel
                   turn={hoveredTurn !== null ? displayData.turns[hoveredTurn] ?? null : null}

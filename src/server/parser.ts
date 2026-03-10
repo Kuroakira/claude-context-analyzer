@@ -3,6 +3,7 @@ import type {
   ParseResult,
   UsageData,
   ContextBreakdown,
+  UserContentBlock,
 } from "../shared/types";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -54,6 +55,75 @@ function extractUserText(content: unknown): string {
     texts.push(item.text);
   }
   return texts.join(" ").trim();
+}
+
+function summarizeToolResult(item: Record<string, unknown>): { text: string; raw: string } {
+  const innerContent = Array.isArray(item.content) ? item.content : [];
+  const parts: string[] = [];
+  for (const inner of innerContent) {
+    if (isRecord(inner) && typeof inner.text === "string") {
+      parts.push(String(inner.text));
+    }
+  }
+  const raw = parts.join("\n");
+  return { text: `tool result (${raw.length} chars)`, raw };
+}
+
+export function extractUserContent(record: Record<string, unknown>): UserContentBlock[] {
+  const message = isRecord(record.message) ? record.message : undefined;
+  const content = message?.content;
+  if (!Array.isArray(content)) return [];
+
+  const blocks: UserContentBlock[] = [];
+
+  for (const item of content) {
+    if (!isRecord(item)) continue;
+
+    if (item.type === "tool_result") {
+      const summary = summarizeToolResult(item);
+      blocks.push({ type: "tool-result", text: summary.text, raw: summary.raw });
+      continue;
+    }
+
+    if (item.type === "image") {
+      const source = isRecord(item.source) ? item.source : undefined;
+      const mediaType = typeof source?.media_type === "string" ? source.media_type : "unknown";
+      blocks.push({ type: "image", text: `image (${mediaType})` });
+      continue;
+    }
+
+    if (item.type !== "text" || typeof item.text !== "string") continue;
+
+    const text = String(item.text);
+
+    if (text.startsWith("<system-reminder>") || text.includes("<available-deferred-tools>")) {
+      const subtype = text.startsWith("<system-reminder>") ? "system-reminder" : "available-deferred-tools";
+      blocks.push({
+        type: "system-context",
+        subtype,
+        text: `${subtype} (${text.length} chars)`,
+        raw: text,
+      });
+    } else if (text.startsWith("<ide_opened_file>")) {
+      blocks.push({
+        type: "system-context",
+        subtype: "ide_opened_file",
+        text: `ide_opened_file (${text.length} chars)`,
+        raw: text,
+      });
+    } else if (text.startsWith("<command-")) {
+      blocks.push({
+        type: "system-context",
+        subtype: "command",
+        text: `command (${text.length} chars)`,
+        raw: text,
+      });
+    } else {
+      blocks.push({ type: "user-text", text });
+    }
+  }
+
+  return blocks;
 }
 
 /** Categorize and estimate tokens for each content block in a user message */
@@ -143,6 +213,7 @@ export function parseJsonl(raw: string): ParseResult {
 
   let cumulative = emptyBreakdown();
   let pendingUserDelta = emptyBreakdown();
+  let pendingUserContent: UserContentBlock[] = [];
 
   for (const line of lines) {
     let record: unknown;
@@ -164,6 +235,7 @@ export function parseJsonl(raw: string): ParseResult {
       const message = isRecord(record.message) ? record.message : undefined;
       lastUserMessage = extractUserText(message?.content);
       pendingUserDelta = categorizeUserContent(message?.content);
+      pendingUserContent = extractUserContent(record);
       continue;
     }
 
@@ -192,10 +264,12 @@ export function parseJsonl(raw: string): ParseResult {
         usage: extractUsage(usage),
         contextBreakdown: { ...cumulative },
         contextDelta: delta,
+        userContent: pendingUserContent,
       });
 
-      // Reset pending delta after first assistant message consumes it
+      // Reset pending state after first assistant message consumes it
       pendingUserDelta = emptyBreakdown();
+      pendingUserContent = [];
       lastUserMessage = "";
       continue;
     }

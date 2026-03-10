@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { parseJsonl } from "./parser";
+import { parseJsonl, extractUserContent } from "./parser";
+import type { UserContentBlock } from "../shared/types";
 
 function makeAssistantRecord(
   usage: Record<string, unknown>,
@@ -205,5 +206,175 @@ describe("parseJsonl", () => {
 
     const result = parseJsonl(lines);
     expect(result.turns).toHaveLength(1);
+  });
+});
+
+describe("extractUserContent", () => {
+  function makeRecord(content: unknown): Record<string, unknown> {
+    return { type: "user", message: { content } };
+  }
+
+  it("returns user-text block for plain text", () => {
+    const record = makeRecord([{ type: "text", text: "Hello Claude" }]);
+    const blocks = extractUserContent(record);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toEqual({
+      type: "user-text",
+      text: "Hello Claude",
+    });
+  });
+
+  it("returns system-context with subtype for system-reminder", () => {
+    const raw = "<system-reminder>hook output here</system-reminder>";
+    const record = makeRecord([{ type: "text", text: raw }]);
+    const blocks = extractUserContent(record);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toEqual({
+      type: "system-context",
+      subtype: "system-reminder",
+      text: "system-reminder (51 chars)",
+      raw,
+    });
+  });
+
+  it("returns system-context with subtype for available-deferred-tools", () => {
+    const raw = "some prefix <available-deferred-tools>tool1\ntool2</available-deferred-tools>";
+    const record = makeRecord([{ type: "text", text: raw }]);
+    const blocks = extractUserContent(record);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toEqual({
+      type: "system-context",
+      subtype: "available-deferred-tools",
+      text: `available-deferred-tools (${raw.length} chars)`,
+      raw,
+    });
+  });
+
+  it("returns system-context with subtype for ide_opened_file", () => {
+    const raw = "<ide_opened_file>/src/index.ts content here</ide_opened_file>";
+    const record = makeRecord([{ type: "text", text: raw }]);
+    const blocks = extractUserContent(record);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toEqual({
+      type: "system-context",
+      subtype: "ide_opened_file",
+      text: `ide_opened_file (${raw.length} chars)`,
+      raw,
+    });
+  });
+
+  it("returns system-context with subtype for command tags", () => {
+    const raw = "<command-output>ls result</command-output>";
+    const record = makeRecord([{ type: "text", text: raw }]);
+    const blocks = extractUserContent(record);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toEqual({
+      type: "system-context",
+      subtype: "command",
+      text: `command (${raw.length} chars)`,
+      raw,
+    });
+  });
+
+  it("returns tool-result block for tool_result type", () => {
+    const record = makeRecord([
+      {
+        type: "tool_result",
+        tool_use_id: "abc123",
+        content: [{ type: "text", text: "file contents here" }],
+      },
+    ]);
+    const blocks = extractUserContent(record);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toEqual({
+      type: "tool-result",
+      text: "tool result (18 chars)",
+      raw: "file contents here",
+    });
+  });
+
+  it("returns image block for image type", () => {
+    const record = makeRecord([
+      {
+        type: "image",
+        source: { type: "base64", media_type: "image/png", data: "abc" },
+      },
+    ]);
+    const blocks = extractUserContent(record);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toEqual({
+      type: "image",
+      text: "image (image/png)",
+    });
+  });
+
+  it("handles mixed content array", () => {
+    const sysRaw = "<system-reminder>context</system-reminder>";
+    const record = makeRecord([
+      { type: "text", text: sysRaw },
+      { type: "text", text: "User question" },
+      {
+        type: "tool_result",
+        tool_use_id: "t1",
+        content: [{ type: "text", text: "result data" }],
+      },
+      {
+        type: "image",
+        source: { type: "base64", media_type: "image/jpeg", data: "xyz" },
+      },
+    ]);
+    const blocks = extractUserContent(record);
+    expect(blocks).toHaveLength(4);
+    expect(blocks[0].type).toBe("system-context");
+    expect(blocks[0].subtype).toBe("system-reminder");
+    expect(blocks[1].type).toBe("user-text");
+    expect(blocks[1].text).toBe("User question");
+    expect(blocks[2].type).toBe("tool-result");
+    expect(blocks[3].type).toBe("image");
+  });
+
+  it("returns empty array for non-array content", () => {
+    const record = makeRecord("just a string");
+    const blocks = extractUserContent(record);
+    expect(blocks).toEqual([]);
+  });
+
+  it("returns empty array when record has no message", () => {
+    const blocks = extractUserContent({ type: "user" });
+    expect(blocks).toEqual([]);
+  });
+});
+
+describe("parseJsonl populates userContent", () => {
+  it("populates userContent on ParsedTurn", () => {
+    const userRecord = JSON.stringify({
+      type: "user",
+      timestamp: "2026-03-10T09:59:00Z",
+      message: {
+        content: [
+          { type: "text", text: "<system-reminder>ctx</system-reminder>" },
+          { type: "text", text: "My question" },
+        ],
+      },
+    });
+    const lines = [
+      userRecord,
+      makeAssistantRecord({ input_tokens: 100, output_tokens: 50 }),
+    ].join("\n");
+
+    const result = parseJsonl(lines);
+    expect(result.turns[0].userContent).toHaveLength(2);
+    expect(result.turns[0].userContent[0].type).toBe("system-context");
+    expect(result.turns[0].userContent[1].type).toBe("user-text");
+    expect(result.turns[0].userContent[1].text).toBe("My question");
+  });
+
+  it("defaults userContent to empty array when no user message precedes assistant", () => {
+    const lines = [
+      makeAssistantRecord({ input_tokens: 100, output_tokens: 50 }),
+    ].join("\n");
+
+    const result = parseJsonl(lines);
+    expect(result.turns[0].userContent).toEqual([]);
   });
 });

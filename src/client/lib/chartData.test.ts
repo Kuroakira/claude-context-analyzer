@@ -21,6 +21,7 @@ function makeTurn(
     },
     contextBreakdown: emptyBreakdown,
     contextDelta: emptyBreakdown,
+    userContent: [],
   };
 }
 

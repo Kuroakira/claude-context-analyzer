@@ -1,8 +1,7 @@
 import type { ParsedTurn } from "../../shared/types";
 
 interface Props {
-  turn: ParsedTurn;
-  onClose: () => void;
+  turn: ParsedTurn | null;
 }
 
 const BREAKDOWN_COLORS: Record<string, string> = {
@@ -31,7 +30,20 @@ function formatTokenCount(n: number): string {
 
 const CONTEXT_LIMIT = 200_000;
 
-export function DetailPanel({ turn, onClose }: Props) {
+export function DetailPanel({ turn }: Props) {
+  if (!turn) {
+    return (
+      <aside className="detail-panel">
+        <div className="detail-panel-header">
+          <h3>Turn Detail</h3>
+        </div>
+        <div className="detail-panel-empty">
+          Hover over the chart to see turn details
+        </div>
+      </aside>
+    );
+  }
+
   const { usage, contextBreakdown, contextDelta, userMessage } = turn;
 
   const contextUsed = usage.input_tokens + usage.cache_creation_input_tokens + usage.cache_read_input_tokens;
@@ -60,7 +72,6 @@ export function DetailPanel({ turn, onClose }: Props) {
             {new Date(turn.timestamp).toLocaleTimeString()}
           </span>
         )}
-        <button className="detail-panel-close" onClick={onClose}>&times;</button>
       </div>
 
       <div className="detail-panel-scroll">

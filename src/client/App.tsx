@@ -137,12 +137,9 @@ export function App() {
                     />
                   </div>
                 </div>
-                {hoveredTurn !== null && displayData.turns[hoveredTurn] && (
-                  <DetailPanel
-                    turn={displayData.turns[hoveredTurn]}
-                    onClose={() => setHoveredTurn(null)}
-                  />
-                )}
+                <DetailPanel
+                  turn={hoveredTurn !== null ? displayData.turns[hoveredTurn] ?? null : null}
+                />
               </div>
             )}
           </main>

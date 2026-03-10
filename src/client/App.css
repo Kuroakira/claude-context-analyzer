@@ -296,25 +296,22 @@ body {
   font-weight: 600;
 }
 
+.detail-panel-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: #666;
+  font-size: 13px;
+  padding: 20px;
+  text-align: center;
+}
+
 .detail-panel-time {
   font-size: 11px;
   color: #666;
 }
 
-.detail-panel-close {
-  margin-left: auto;
-  background: none;
-  border: none;
-  color: #666;
-  font-size: 18px;
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-}
-
-.detail-panel-close:hover {
-  color: #fff;
-}
 
 .detail-panel-scroll {
   flex: 1;

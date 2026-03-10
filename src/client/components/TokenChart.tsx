@@ -59,81 +59,6 @@ const BREAKDOWN_LABELS: Record<string, string> = {
   images: "Images",
 };
 
-// Build a set of turn indices that have user messages for quick lookup
-function buildMessageIndices(turns: ParsedTurn[]): Set<number> {
-  const set = new Set<number>();
-  for (let i = 0; i < turns.length; i++) {
-    if (turns[i].userMessage) set.add(i);
-  }
-  return set;
-}
-
-function userMessageMarkerPlugin(_turns: ParsedTurn[], messageIndices: Set<number>): uPlot.Plugin {
-  let hoveredIdx: number | null = null;
-  let markers: HTMLDivElement[] = [];
-  let container: HTMLDivElement | null = null;
-
-  function init(u: uPlot) {
-    // Create a container inside the over element (plot overlay)
-    container = document.createElement("div");
-    container.style.cssText = "position:absolute;inset:0;pointer-events:none;overflow:hidden;";
-    u.over.appendChild(container);
-  }
-
-  function updateMarkers(u: uPlot) {
-    if (!container) return;
-    const xData = u.data[0];
-    if (!xData) return;
-
-    // Remove old markers
-    for (const m of markers) m.remove();
-    markers = [];
-
-    // over element height = plot area height in CSS pixels
-    // cursor.left uses same coordinate system (CSS px relative to over)
-    const overH = u.over.offsetHeight;
-
-    for (const i of messageIndices) {
-      if (i >= xData.length) continue;
-      // cursor-space X: valToPos returns CSS px relative to canvas,
-      // subtract over's offset to get position within over
-      const cx = u.valToPos(xData[i], "x", true) - u.over.offsetLeft;
-      const isHovered = i === hoveredIdx;
-      const size = isHovered ? 8 : 5;
-
-      const el = document.createElement("div");
-      el.style.cssText = `
-        position:absolute;
-        left:${cx - size}px;
-        top:${overH - size * 1.5}px;
-        width:0;height:0;
-        border-left:${size}px solid transparent;
-        border-right:${size}px solid transparent;
-        border-bottom:${size * 1.5}px solid ${isHovered ? "#fff" : "#5af"};
-        opacity:${isHovered ? 1 : 0.7};
-        pointer-events:none;
-      `;
-      container.appendChild(el);
-      markers.push(el);
-    }
-  }
-
-  function setCursor(u: uPlot) {
-    const idx = u.cursor.idx;
-    if (idx !== hoveredIdx) {
-      hoveredIdx = idx ?? null;
-    }
-  }
-
-  return {
-    hooks: {
-      init,
-      draw: updateMarkers,
-      setCursor,
-    },
-  };
-}
-
 function tooltipPlugin(
   turns: ParsedTurn[],
   onTurnHover?: (turnIndex: number | null) => void,
@@ -155,6 +80,7 @@ function tooltipPlugin(
       tooltip.style.display = "none";
       if (lastIdx !== null) {
         lastIdx = null;
+        onTurnHover?.(null);
       }
       return;
     }
@@ -270,16 +196,12 @@ export function TokenChart({ turns, onTurnHover }: Props) {
     if (!el || turns.length === 0) return;
 
     const data = toChartData(turns);
-    const msgIndices = buildMessageIndices(turns);
 
     const opts: uPlot.Options = {
       width: el.clientWidth,
       height: 400,
       series: SERIES,
-      plugins: [
-        userMessageMarkerPlugin(turns, msgIndices),
-        tooltipPlugin(turns, stableOnTurnHover),
-      ],
+      plugins: [tooltipPlugin(turns, stableOnTurnHover)],
       axes: [
         { label: "Turn", space: 40 },
         {
@@ -299,24 +221,6 @@ export function TokenChart({ turns, onTurnHover }: Props) {
           fill: "#fff",
           stroke: "#5af",
           width: 2,
-        },
-        dataIdx: (_u, seriesIdx, closestIdx) => {
-          // Only snap for the first series (others follow)
-          if (seriesIdx !== 1 || closestIdx == null) return closestIdx;
-          // If current turn has a message, stay
-          if (msgIndices.has(closestIdx)) return closestIdx;
-          // Snap to nearest turn with a message (within 3 indices)
-          const range = 3;
-          let bestIdx = closestIdx;
-          let bestDist = Infinity;
-          for (const mi of msgIndices) {
-            const dist = Math.abs(mi - closestIdx);
-            if (dist <= range && dist < bestDist) {
-              bestDist = dist;
-              bestIdx = mi;
-            }
-          }
-          return bestIdx;
         },
       },
     };

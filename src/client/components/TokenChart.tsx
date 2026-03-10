@@ -1,4 +1,4 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useCallback } from "react";
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import type { ParsedTurn } from "../../shared/types";
@@ -35,9 +35,182 @@ const SERIES: uPlot.Series[] = [
   },
 ];
 
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+  return String(n);
+}
+
+const BREAKDOWN_COLORS: Record<string, string> = {
+  userText: "#5af",
+  toolResults: "#f5a",
+  systemReminder: "#fa5",
+  ideContext: "#af5",
+  assistantResponse: "#a5f",
+  images: "#5fa",
+};
+
+const BREAKDOWN_LABELS: Record<string, string> = {
+  userText: "User Text",
+  toolResults: "Tool Results",
+  systemReminder: "System / MCP / Skills",
+  ideContext: "IDE / Commands",
+  assistantResponse: "Assistant Response",
+  images: "Images",
+};
+
+function tooltipPlugin(
+  turns: ParsedTurn[],
+  onTurnClick?: (turnIndex: number) => void,
+): uPlot.Plugin {
+  let tooltip: HTMLDivElement | null = null;
+  let lastIdx: number | null = null;
+
+  function init(u: uPlot) {
+    tooltip = document.createElement("div");
+    tooltip.className = "uplot-tooltip";
+    tooltip.style.display = "none";
+    u.over.appendChild(tooltip);
+
+    // Click handler
+    u.over.addEventListener("click", () => {
+      if (onTurnClick && lastIdx != null) {
+        onTurnClick(lastIdx);
+      }
+    });
+  }
+
+  function setCursor(u: uPlot) {
+    if (!tooltip) return;
+    const idx = u.cursor.idx;
+    if (idx == null || idx < 0 || idx >= turns.length) {
+      tooltip.style.display = "none";
+      lastIdx = null;
+      return;
+    }
+
+    lastIdx = idx;
+    const turn = turns[idx];
+    const { usage, contextBreakdown, userMessage } = turn;
+
+    // Build token rows
+    const tokenRows = [
+      { label: "Input Tokens", value: usage.input_tokens, color: "#5af" },
+      { label: "Output Tokens", value: usage.output_tokens, color: "#f5a" },
+      {
+        label: "Cache Creation",
+        value: usage.cache_creation_input_tokens,
+        color: "#5fa",
+      },
+      {
+        label: "Cache Read",
+        value: usage.cache_read_input_tokens,
+        color: "#fa5",
+      },
+    ];
+
+    // Build breakdown rows (only non-zero)
+    const breakdownEntries = Object.entries(contextBreakdown).filter(
+      ([, v]) => v > 0,
+    );
+    const breakdownTotal = breakdownEntries.reduce(
+      (sum, [, v]) => sum + v,
+      0,
+    );
+
+    // User message preview
+    const msgPreview = userMessage
+      ? userMessage.length > 120
+        ? userMessage.slice(0, 120) + "..."
+        : userMessage
+      : "(no message)";
+
+    let html = `<div class="tt-header">Turn ${idx}</div>`;
+
+    // Token values
+    html += `<div class="tt-section">`;
+    for (const row of tokenRows) {
+      html += `<div class="tt-row">
+        <span class="tt-dot" style="background:${row.color}"></span>
+        <span class="tt-label">${row.label}</span>
+        <span class="tt-value">${formatTokenCount(row.value)}</span>
+      </div>`;
+    }
+    html += `</div>`;
+
+    // Context breakdown
+    if (breakdownEntries.length > 0) {
+      html += `<div class="tt-divider"></div>`;
+      html += `<div class="tt-section-title">Context Composition (est.)</div>`;
+      html += `<div class="tt-breakdown-bar">`;
+      for (const [key, val] of breakdownEntries) {
+        const pct = (val / breakdownTotal) * 100;
+        if (pct < 1) continue;
+        html += `<div class="tt-bar-seg" style="width:${pct}%;background:${BREAKDOWN_COLORS[key] ?? "#666"}" title="${BREAKDOWN_LABELS[key] ?? key}: ${formatTokenCount(val)}"></div>`;
+      }
+      html += `</div>`;
+      html += `<div class="tt-breakdown-list">`;
+      for (const [key, val] of breakdownEntries) {
+        const pct = ((val / breakdownTotal) * 100).toFixed(1);
+        html += `<div class="tt-row">
+          <span class="tt-dot" style="background:${BREAKDOWN_COLORS[key] ?? "#666"}"></span>
+          <span class="tt-label">${BREAKDOWN_LABELS[key] ?? key}</span>
+          <span class="tt-value">${formatTokenCount(val)} (${pct}%)</span>
+        </div>`;
+      }
+      html += `</div>`;
+    }
+
+    // User message
+    html += `<div class="tt-divider"></div>`;
+    html += `<div class="tt-section-title">User Request</div>`;
+    html += `<div class="tt-msg">${escapeHtml(msgPreview)}</div>`;
+    html += `<div class="tt-hint">Click for full message</div>`;
+
+    tooltip.innerHTML = html;
+    tooltip.style.display = "block";
+
+    // Position tooltip
+    const left = u.cursor.left ?? 0;
+    const top = u.cursor.top ?? 0;
+    const overRect = u.over.getBoundingClientRect();
+    const ttWidth = 320;
+
+    // Flip to left side if too close to right edge
+    const xPos =
+      left + ttWidth + 20 > overRect.width
+        ? left - ttWidth - 10
+        : left + 10;
+    const yPos = Math.min(top, overRect.height - tooltip.offsetHeight - 10);
+
+    tooltip.style.left = Math.max(0, xPos) + "px";
+    tooltip.style.top = Math.max(0, yPos) + "px";
+  }
+
+  return {
+    hooks: {
+      init,
+      setCursor,
+    },
+  };
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 export function TokenChart({ turns, onTurnClick }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<uPlot | null>(null);
+
+  const stableOnTurnClick = useCallback(
+    (idx: number) => onTurnClick?.(idx),
+    [onTurnClick],
+  );
 
   useEffect(() => {
     const el = containerRef.current;
@@ -49,37 +222,26 @@ export function TokenChart({ turns, onTurnClick }: Props) {
       width: el.clientWidth,
       height: 400,
       series: SERIES,
+      plugins: [tooltipPlugin(turns, stableOnTurnClick)],
       axes: [
         { label: "Turn", space: 40 },
         {
           label: "Tokens",
-          space: 40,
-          size: 80,
+          space: 60,
+          size: 90,
+          values: (_u: uPlot, vals: number[]) =>
+            vals.map((v) => formatTokenCount(v)),
         },
       ],
       scales: {
         x: { time: false },
       },
       cursor: {
-        bind: {
-          click: (uSelf) => {
-            return (e) => {
-              if (onTurnClick) {
-                const idx = uSelf.cursor.idx;
-                if (idx != null) {
-                  onTurnClick(idx);
-                }
-              }
-              return null;
-            };
-          },
-          // Required by uPlot when overriding bind
-          mousedown: () => () => null,
-          mouseup: () => () => null,
-          dblclick: () => () => null,
-          mousemove: () => () => null,
-          mouseleave: () => () => null,
-          mouseenter: () => () => null,
+        points: {
+          size: 8,
+          fill: "#fff",
+          stroke: "#5af",
+          width: 2,
         },
       },
     };
@@ -105,7 +267,7 @@ export function TokenChart({ turns, onTurnClick }: Props) {
       chartRef.current?.destroy();
       chartRef.current = null;
     };
-  }, [turns, onTurnClick]);
+  }, [turns, stableOnTurnClick]);
 
   if (turns.length === 0) {
     return <div className="chart-empty">No turn data to display</div>;

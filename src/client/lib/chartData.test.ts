@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import { toChartData } from "./chartData";
 import type { ParsedTurn } from "../../shared/types";
 
+const emptyBreakdown = { userText: 0, toolResults: 0, systemReminder: 0, ideContext: 0, assistantResponse: 0, images: 0 };
+
 function makeTurn(
   turnIndex: number,
   usage: { input_tokens: number; output_tokens: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number },
@@ -17,6 +19,8 @@ function makeTurn(
       cache_creation_input_tokens: usage.cache_creation_input_tokens ?? 0,
       cache_read_input_tokens: usage.cache_read_input_tokens ?? 0,
     },
+    contextBreakdown: emptyBreakdown,
+    contextDelta: emptyBreakdown,
   };
 }
 

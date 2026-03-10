@@ -39,18 +39,22 @@ describe("parseJsonl", () => {
 
     const result = parseJsonl(lines);
     expect(result.turns).toHaveLength(1);
-    expect(result.turns[0]).toEqual({
-      turnIndex: 0,
-      timestamp: "2026-03-10T10:00:00Z",
-      userMessage: "Hello Claude",
-      model: "claude-opus-4-6",
-      usage: {
-        input_tokens: 100,
-        output_tokens: 50,
-        cache_creation_input_tokens: 0,
-        cache_read_input_tokens: 0,
-      },
+    const turn = result.turns[0];
+    expect(turn.turnIndex).toBe(0);
+    expect(turn.timestamp).toBe("2026-03-10T10:00:00Z");
+    expect(turn.userMessage).toBe("Hello Claude");
+    expect(turn.model).toBe("claude-opus-4-6");
+    expect(turn.usage).toEqual({
+      input_tokens: 100,
+      output_tokens: 50,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
     });
+    // contextBreakdown and contextDelta should be present
+    expect(turn.contextBreakdown).toBeDefined();
+    expect(turn.contextDelta).toBeDefined();
+    expect(turn.contextDelta.userText).toBeGreaterThan(0);
+    expect(turn.contextDelta.assistantResponse).toBeGreaterThan(0);
     expect(result.skippedLines).toBe(0);
     expect(result.warnings).toHaveLength(0);
   });

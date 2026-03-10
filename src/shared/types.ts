@@ -5,12 +5,26 @@ export interface UsageData {
   cache_read_input_tokens: number;
 }
 
+/** Estimated token breakdown by content category (chars / 4 approximation) */
+export interface ContextBreakdown {
+  userText: number;
+  toolResults: number;
+  systemReminder: number;
+  ideContext: number;
+  assistantResponse: number;
+  images: number;
+}
+
 export interface ParsedTurn {
   turnIndex: number;
   timestamp: string;
   userMessage: string;
   model?: string;
   usage: UsageData;
+  /** Cumulative estimated context breakdown at this turn */
+  contextBreakdown: ContextBreakdown;
+  /** Delta: content added in this turn only */
+  contextDelta: ContextBreakdown;
 }
 
 export interface SessionMeta {

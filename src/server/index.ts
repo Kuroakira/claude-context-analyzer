@@ -80,7 +80,7 @@ app.get("/api/sessions/:id/poll", (c) => {
   }
 });
 
-const port = 3001;
+const port = 4100;
 
 if (process.env.NODE_ENV !== "test") {
   serve({ fetch: app.fetch, port, hostname: "127.0.0.1" }, (info) => {
